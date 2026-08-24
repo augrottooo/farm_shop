@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.sky.mapper.ProductMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        insert into product
+        (category_id, name, subtitle, sort, image, description, status, trace_enabled, create_time, update_time, create_user, update_user)
+        values
+        (#{categoryId}, #{name}, #{subtitle}, #{sort}, #{image}, #{description}, #{status}, #{traceEnabled}, #{createTime}, #{updateTime}, #{createUser}, #{updateUser})
+    </insert>
+
+    <update id="update" parameterType="com.sky.entity.Product">
+        update product
+        <set>
+            <if test="categoryId != null">category_id = #{categoryId},</if>
+            <if test="name != null">name = #{name},</if>
+            <if test="subtitle != null">subtitle = #{subtitle},</if>
+            <if test="sort != null">sort = #{sort},</if>
+            <if test="image != null">image = #{image},</if>
+            <if test="description != null">description = #{description},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="traceEnabled != null">trace_enabled = #{traceEnabled},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="updateUser != null">update_user = #{updateUser}</if>
+        </set>
+        where id = #{id}
+    </update>
+
+    <select id="pageQuery" resultType="com.sky.vo.ProductVO">
+        select p.*, c.name as categoryName
+        from product p
+        left join category c on p.category_id = c.id
+        <where>
+            <if test="name != null and name != ''">
+                and p.name like concat('%', #{name}, '%')
+            </if>
+            <if test="categoryId != null">
+                and p.category_id = #{categoryId}
+            </if>
+            <if test="status != null">
+                and p.status = #{status}
+            </if>
+        </where>
+        order by p.create_time desc
+    </select>
+
+    <select id="getById" resultType="com.sky.entity.Product">
+        select * from product where id = #{id}
+    </select>
+
+    <select id="list" resultType="com.sky.entity.Product">
+        select * from product
+        <where>
+            <if test="categoryId != null">
+                and category_id = #{categoryId}
+            </if>
+            <if test="name != null and name != ''">
+                and name like concat('%', #{name}, '%')
+            </if>
+            <if test="status != null">
+                and status = #{status}
+            </if>
+        </where>
+        order by sort desc, create_time desc
+    </select>
+</mapper>

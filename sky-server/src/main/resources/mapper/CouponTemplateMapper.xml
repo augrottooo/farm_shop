@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.sky.mapper.CouponTemplateMapper">
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        insert into coupon_template
+        (coupon_name, coupon_type, threshold_amount, discount_amount, discount_rate, total_count, issue_count, receive_limit, valid_days, start_time, end_time, status, create_time, update_time, create_user, update_user)
+        values
+        (#{couponName}, #{couponType}, #{thresholdAmount}, #{discountAmount}, #{discountRate}, #{totalCount}, #{issueCount}, #{receiveLimit}, #{validDays}, #{startTime}, #{endTime}, #{status}, #{createTime}, #{updateTime}, #{createUser}, #{updateUser})
+    </insert>
+    <update id="update" parameterType="com.sky.entity.CouponTemplate">
+        update coupon_template
+        <set>
+            <if test="couponName != null">coupon_name = #{couponName},</if>
+            <if test="couponType != null">coupon_type = #{couponType},</if>
+            <if test="thresholdAmount != null">threshold_amount = #{thresholdAmount},</if>
+            <if test="discountAmount != null">discount_amount = #{discountAmount},</if>
+            <if test="discountRate != null">discount_rate = #{discountRate},</if>
+            <if test="totalCount != null">total_count = #{totalCount},</if>
+            <if test="issueCount != null">issue_count = #{issueCount},</if>
+            <if test="receiveLimit != null">receive_limit = #{receiveLimit},</if>
+            <if test="validDays != null">valid_days = #{validDays},</if>
+            <if test="startTime != null">start_time = #{startTime},</if>
+            <if test="endTime != null">end_time = #{endTime},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="updateUser != null">update_user = #{updateUser}</if>
+        </set>
+        where id = #{id}
+    </update>
+    <select id="pageQuery" resultType="com.sky.entity.CouponTemplate">
+        select * from coupon_template
+        <where>
+            <if test="couponName != null and couponName != ''">and coupon_name like concat('%', #{couponName}, '%')</if>
+            <if test="status != null">and status = #{status}</if>
+        </where>
+        order by create_time desc
+    </select>
+    <select id="list" resultType="com.sky.entity.CouponTemplate">
+        select * from coupon_template
+        <where>
+            <if test="couponName != null and couponName != ''">and coupon_name like concat('%', #{couponName}, '%')</if>
+            <if test="status != null">and status = #{status}</if>
+        </where>
+    </select>
+</mapper>

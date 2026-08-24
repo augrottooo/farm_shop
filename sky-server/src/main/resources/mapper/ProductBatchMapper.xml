@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.sky.mapper.ProductBatchMapper">
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        insert into product_batch
+        (product_id, sku_id, batch_no, origin_place, farmer_id, harvest_time, quality_report_url, trace_code, remark, create_time, update_time, create_user, update_user)
+        values
+        (#{productId}, #{skuId}, #{batchNo}, #{originPlace}, #{farmerId}, #{harvestTime}, #{qualityReportUrl}, #{traceCode}, #{remark}, #{createTime}, #{updateTime}, #{createUser}, #{updateUser})
+    </insert>
+    <update id="update" parameterType="com.sky.entity.ProductBatch">
+        update product_batch
+        <set>
+            <if test="productId != null">product_id = #{productId},</if>
+            <if test="skuId != null">sku_id = #{skuId},</if>
+            <if test="batchNo != null">batch_no = #{batchNo},</if>
+            <if test="originPlace != null">origin_place = #{originPlace},</if>
+            <if test="farmerId != null">farmer_id = #{farmerId},</if>
+            <if test="harvestTime != null">harvest_time = #{harvestTime},</if>
+            <if test="qualityReportUrl != null">quality_report_url = #{qualityReportUrl},</if>
+            <if test="traceCode != null">trace_code = #{traceCode},</if>
+            <if test="remark != null">remark = #{remark},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="updateUser != null">update_user = #{updateUser}</if>
+        </set>
+        where id = #{id}
+    </update>
+</mapper>

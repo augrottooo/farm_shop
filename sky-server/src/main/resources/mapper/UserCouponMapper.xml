@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.sky.mapper.UserCouponMapper">
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        insert into user_coupon
+        (user_id, coupon_template_id, coupon_code, coupon_status, order_id, used_time, expire_time, create_time, update_time)
+        values
+        (#{userId}, #{couponTemplateId}, #{couponCode}, #{couponStatus}, #{orderId}, #{usedTime}, #{expireTime}, #{createTime}, #{updateTime})
+    </insert>
+    <update id="update" parameterType="com.sky.entity.UserCoupon">
+        update user_coupon
+        <set>
+            <if test="couponStatus != null">coupon_status = #{couponStatus},</if>
+            <if test="orderId != null">order_id = #{orderId},</if>
+            <if test="usedTime != null">used_time = #{usedTime},</if>
+            <if test="expireTime != null">expire_time = #{expireTime},</if>
+            <if test="updateTime != null">update_time = #{updateTime}</if>
+        </set>
+        where id = #{id}
+    </update>
+</mapper>

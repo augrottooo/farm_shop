@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.sky.mapper.RefundRecordMapper">
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        insert into refund_record
+        (order_id, refund_no, refund_amount, refund_status, reason, channel, transaction_id, applied_at, success_at, create_time, update_time)
+        values
+        (#{orderId}, #{refundNo}, #{refundAmount}, #{refundStatus}, #{reason}, #{channel}, #{transactionId}, #{appliedAt}, #{successAt}, #{createTime}, #{updateTime})
+    </insert>
+    <update id="update" parameterType="com.sky.entity.RefundRecord">
+        update refund_record
+        <set>
+            <if test="refundAmount != null">refund_amount = #{refundAmount},</if>
+            <if test="refundStatus != null">refund_status = #{refundStatus},</if>
+            <if test="reason != null">reason = #{reason},</if>
+            <if test="channel != null">channel = #{channel},</if>
+            <if test="transactionId != null">transaction_id = #{transactionId},</if>
+            <if test="appliedAt != null">applied_at = #{appliedAt},</if>
+            <if test="successAt != null">success_at = #{successAt},</if>
+            <if test="updateTime != null">update_time = #{updateTime}</if>
+        </set>
+        where id = #{id}
+    </update>
+</mapper>

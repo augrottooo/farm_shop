@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.sky.mapper.LogisticsMapper">
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        insert into logistics
+        (order_id, carrier_code, carrier_name, tracking_no, ship_status, shipped_at, delivered_at, receiver_name, receiver_phone, receiver_address, create_time, update_time)
+        values
+        (#{orderId}, #{carrierCode}, #{carrierName}, #{trackingNo}, #{shipStatus}, #{shippedAt}, #{deliveredAt}, #{receiverName}, #{receiverPhone}, #{receiverAddress}, #{createTime}, #{updateTime})
+    </insert>
+    <update id="update" parameterType="com.sky.entity.Logistics">
+        update logistics
+        <set>
+            <if test="carrierCode != null">carrier_code = #{carrierCode},</if>
+            <if test="carrierName != null">carrier_name = #{carrierName},</if>
+            <if test="trackingNo != null">tracking_no = #{trackingNo},</if>
+            <if test="shipStatus != null">ship_status = #{shipStatus},</if>
+            <if test="shippedAt != null">shipped_at = #{shippedAt},</if>
+            <if test="deliveredAt != null">delivered_at = #{deliveredAt},</if>
+            <if test="receiverName != null">receiver_name = #{receiverName},</if>
+            <if test="receiverPhone != null">receiver_phone = #{receiverPhone},</if>
+            <if test="receiverAddress != null">receiver_address = #{receiverAddress},</if>
+            <if test="updateTime != null">update_time = #{updateTime}</if>
+        </set>
+        where id = #{id}
+    </update>
+</mapper>
