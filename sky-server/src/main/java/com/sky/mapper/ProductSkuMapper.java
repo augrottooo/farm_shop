@@ -26,5 +26,14 @@ public interface ProductSkuMapper {
     @Update("update product_sku set status = #{status} where product_id = #{productId}")
     void updateStatusByProductId(@Param("productId") Long productId, @Param("status") Integer status);
 
+    @Update("update product_sku set stock = stock - #{count} where id = #{skuId} and stock >= #{count}")
+    int deductStock(@Param("skuId") Long skuId, @Param("count") Integer count);
+
+    @Update("update product_sku set stock = stock + #{count} where id = #{skuId}")
+    int restoreStock(@Param("skuId") Long skuId, @Param("count") Integer count);
+
+    @Update("update product_sku set stock = #{stock} where id = #{skuId}")
+    int updateStock(@Param("skuId") Long skuId, @Param("stock") Integer stock);
+
     void update(ProductSku productSku);
 }

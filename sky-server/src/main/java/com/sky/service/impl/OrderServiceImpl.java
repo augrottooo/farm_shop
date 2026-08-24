@@ -17,6 +17,7 @@ import com.sky.exception.ShoppingCartBusinessException;
 import com.sky.mapper.*;
 import com.sky.result.PageResult;
 import com.sky.service.OrderService;
+import com.sky.service.StockService;
 import com.sky.utils.WeChatPayUtil;
 import com.sky.vo.OrderPaymentVO;
 import com.sky.vo.OrderStatisticsVO;
@@ -55,6 +56,8 @@ public class OrderServiceImpl implements OrderService {
     private ProductMapper productMapper;
     @Autowired
     private ProductSkuMapper productSkuMapper;
+    @Autowired
+    private StockService stockService;
     @Autowired
     private WeChatPayUtil weChatPayUtil;
     @Autowired
@@ -105,10 +108,6 @@ public class OrderServiceImpl implements OrderService {
                 throw new ProductBusinessException(MessageConstant.PRODUCT_NOT_FOUND);
             }
 
-            if (sku.getStock() == null || sku.getStock() < cart.getNumber()) {
-                throw new ProductBusinessException(MessageConstant.STOCK_NOT_ENOUGH);
-            }
-
             OrderDetail orderDetail = new OrderDetail();
             //orderDetail.setOrderId(orders.getId());
             orderDetail.setProductId(product.getId());
@@ -135,6 +134,12 @@ public class OrderServiceImpl implements OrderService {
         orderMapper.insert(orders);
 
         orderDetailList.forEach(orderDetail -> orderDetail.setOrderId(orders.getId()));
+
+        // 订单头先落库拿到 orderId；库存扣减和后续写入仍在本方法事务内。
+        for (ShoppingCart cart : shoppingCartList) {
+            stockService.deductStock(cart.getSkuId(), cart.getNumber(), orders.getId());
+        }
+
         orderDetailMapper.insertBatch(orderDetailList);
 
         //4. 清空当前用户的购物车数据

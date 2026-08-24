@@ -36,9 +36,6 @@ public class ProductServiceImpl implements ProductService {
         if (product.getStatus() == null) {
             product.setStatus(StatusConstant.DISABLE);
         }
-        if (product.getTraceEnabled() == null) {
-            product.setTraceEnabled(1);
-        }
         productMapper.insert(product);
 
         Long productId = product.getId();
@@ -80,9 +77,6 @@ public class ProductServiceImpl implements ProductService {
     public void update(ProductDTO productDTO) {
         Product product = new Product();
         BeanUtils.copyProperties(productDTO, product);
-        if (product.getTraceEnabled() == null) {
-            product.setTraceEnabled(1);
-        }
         productMapper.update(product);
 
         Long productId = productDTO.getId();

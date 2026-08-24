@@ -20,9 +20,6 @@ public class ProductDTO implements Serializable {
 
     private Integer sort;
 
-    // 1支持溯源 0不支持
-    private Integer traceEnabled;
-
     private String image;
 
     private String description;

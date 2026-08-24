@@ -42,9 +42,6 @@ public class Product implements Serializable {
     // 状态 0 下架 1 上架
     private Integer status;
 
-    // 是否支持溯源 0 否 1 是
-    private Integer traceEnabled;
-
     private LocalDateTime createTime;
 
     private LocalDateTime updateTime;

@@ -13,7 +13,6 @@ CREATE TABLE IF NOT EXISTS `product` (
   `image` varchar(255) DEFAULT NULL COMMENT '主图',
   `description` varchar(500) DEFAULT NULL COMMENT '商品描述',
   `status` int NOT NULL DEFAULT 0 COMMENT '状态 0下架 1上架',
-  `trace_enabled` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否支持溯源 0否 1是',
   `create_time` datetime DEFAULT NULL COMMENT '创建时间',
   `update_time` datetime DEFAULT NULL COMMENT '更新时间',
   `create_user` bigint DEFAULT NULL COMMENT '创建人',
@@ -41,42 +40,6 @@ CREATE TABLE IF NOT EXISTS `product_sku` (
   KEY `idx_product_sku_product` (`product_id`),
   KEY `idx_product_sku_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品规格表';
-
-CREATE TABLE IF NOT EXISTS `farmer` (
-  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键',
-  `name` varchar(64) NOT NULL COMMENT '农户姓名',
-  `phone` varchar(20) DEFAULT NULL COMMENT '手机号',
-  `id_number` varchar(32) DEFAULT NULL COMMENT '身份证号',
-  `farm_name` varchar(128) DEFAULT NULL COMMENT '农场/合作社名称',
-  `origin_place` varchar(128) DEFAULT NULL COMMENT '产地',
-  `remark` varchar(255) DEFAULT NULL COMMENT '备注',
-  `status` int NOT NULL DEFAULT 1 COMMENT '状态 0停用 1启用',
-  `create_time` datetime DEFAULT NULL COMMENT '创建时间',
-  `update_time` datetime DEFAULT NULL COMMENT '更新时间',
-  `create_user` bigint DEFAULT NULL COMMENT '创建人',
-  `update_user` bigint DEFAULT NULL COMMENT '修改人',
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='农户档案表';
-
-CREATE TABLE IF NOT EXISTS `product_batch` (
-  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键',
-  `product_id` bigint NOT NULL COMMENT '商品id',
-  `sku_id` bigint DEFAULT NULL COMMENT 'SKU id',
-  `batch_no` varchar(64) NOT NULL COMMENT '批次号',
-  `origin_place` varchar(128) DEFAULT NULL COMMENT '产地',
-  `farmer_id` bigint DEFAULT NULL COMMENT '农户id',
-  `harvest_time` datetime DEFAULT NULL COMMENT '采收时间',
-  `quality_report_url` varchar(255) DEFAULT NULL COMMENT '质检报告地址',
-  `trace_code` varchar(64) DEFAULT NULL COMMENT '溯源码',
-  `remark` varchar(255) DEFAULT NULL COMMENT '备注',
-  `create_time` datetime DEFAULT NULL COMMENT '创建时间',
-  `update_time` datetime DEFAULT NULL COMMENT '更新时间',
-  `create_user` bigint DEFAULT NULL COMMENT '创建人',
-  `update_user` bigint DEFAULT NULL COMMENT '修改人',
-  PRIMARY KEY (`id`),
-  KEY `idx_product_batch_product` (`product_id`),
-  KEY `idx_product_batch_sku` (`sku_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品批次表';
 
 CREATE TABLE IF NOT EXISTS `coupon_template` (
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键',

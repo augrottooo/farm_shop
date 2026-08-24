@@ -19,11 +19,15 @@ public class StockLog implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
+    public static final Integer INIT = 1;
+    public static final Integer DEDUCT = 2;
+    public static final Integer RESTORE = 3;
+
     private Long id;
 
     private Long skuId;
 
-    // 1预扣 2扣减 3回补
+    // 1初始化 2扣减 3回补
     private Integer businessType;
 
     private Long bizId;

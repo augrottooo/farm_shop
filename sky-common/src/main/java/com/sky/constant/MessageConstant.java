@@ -28,6 +28,7 @@ public class MessageConstant {
     public static final String PRODUCT_NOT_FOUND = "商品不存在";
     public static final String PRODUCT_SKU_NOT_FOUND = "商品规格不存在";
     public static final String STOCK_NOT_ENOUGH = "库存不足";
+    public static final String STOCK_VALUE_INVALID = "库存数量不能小于0";
     public static final String COUPON_NOT_FOUND = "优惠券不存在";
     public static final String REFUND_FAILED = "退款失败";
 
