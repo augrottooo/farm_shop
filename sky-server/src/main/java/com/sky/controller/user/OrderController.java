@@ -91,6 +91,16 @@ public class OrderController {
     }
 
     /**
+     * 用户确认收货
+     */
+    @PutMapping("/receive")
+    @ApiOperation("确认收货")
+    public Result receive(@RequestBody com.sky.dto.OrdersReceiveDTO ordersReceiveDTO) {
+        orderService.receive(ordersReceiveDTO.getId());
+        return Result.success();
+    }
+
+    /**
      * 再来一单
      *
      * @param id

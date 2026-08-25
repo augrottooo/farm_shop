@@ -34,9 +34,6 @@
             <if test="checkoutTime != null">
                 checkout_time=#{checkoutTime},
             </if>
-            <if test="status != null">
-                status = #{status},
-            </if>
             <if test="amount != null">
                 amount = #{amount},
             </if>

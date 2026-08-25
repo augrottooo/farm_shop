@@ -113,6 +113,13 @@ public interface OrderService {
     void complete(Long id);
 
     /**
+     * 用户确认收货
+     *
+     * @param id 订单id
+     */
+    void receive(Long id);
+
+    /**
      * 客户催单
      * @param id
      */

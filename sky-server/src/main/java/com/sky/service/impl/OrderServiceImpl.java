@@ -16,8 +16,11 @@ import com.sky.exception.ProductBusinessException;
 import com.sky.exception.ShoppingCartBusinessException;
 import com.sky.mapper.*;
 import com.sky.result.PageResult;
+import com.sky.enumeration.OrderStatus;
 import com.sky.service.OrderService;
+import com.sky.service.LogisticsService;
 import com.sky.service.StockService;
+import com.sky.state.OrderStateMachine;
 import com.sky.utils.WeChatPayUtil;
 import com.sky.vo.OrderPaymentVO;
 import com.sky.vo.OrderStatisticsVO;
@@ -58,6 +61,10 @@ public class OrderServiceImpl implements OrderService {
     private ProductSkuMapper productSkuMapper;
     @Autowired
     private StockService stockService;
+    @Autowired
+    private LogisticsService logisticsService;
+    @Autowired
+    private OrderStateMachine orderStateMachine;
     @Autowired
     private WeChatPayUtil weChatPayUtil;
     @Autowired
@@ -238,7 +245,15 @@ public class OrderServiceImpl implements OrderService {
 
         //发现没有将支付时间 check_out属性赋值，所以在这里更新
         LocalDateTime check_out_time = LocalDateTime.now();
-        orderMapper.updateStatus(OrderStatus, OrderPaidStatus, check_out_time, orderId);
+        int affectedRows = orderMapper.updateStatus(
+                OrderStatus,
+                OrderPaidStatus,
+                check_out_time,
+                orderId,
+                Orders.PENDING_PAYMENT);
+        if (affectedRows == 0) {
+            throw new OrderBusinessException(MessageConstant.ORDER_STATUS_ERROR);
+        }
 
         // =====================【新增WebSocket推送 放在方法末尾】=====================
         Map map = new HashMap();
@@ -265,14 +280,15 @@ public class OrderServiceImpl implements OrderService {
         Orders ordersDB = orderMapper.getByNumber(outTradeNo);
 
         // 根据订单id更新订单的状态、支付方式、支付状态、结账时间
-        Orders orders = Orders.builder()
-                .id(ordersDB.getId())
-                .status(Orders.TO_BE_CONFIRMED)
-                .payStatus(Orders.PAID)
-                .checkoutTime(LocalDateTime.now())
-                .build();
-
-        orderMapper.update(orders);
+        int affectedRows = orderMapper.updateStatus(
+                OrderStatus.WAITING_SHIP.getCode(),
+                Orders.PAID,
+                LocalDateTime.now(),
+                ordersDB.getId(),
+                Orders.PENDING_PAYMENT);
+        if (affectedRows == 0) {
+            throw new OrderBusinessException(MessageConstant.ORDER_STATUS_ERROR);
+        }
 
     }
 
@@ -343,43 +359,22 @@ public class OrderServiceImpl implements OrderService {
      */
     @Transactional
     public void userCancelById(Long id) throws Exception {
-        // 根据id查询订单
-        Orders ordersDB = orderMapper.getById(id);
-
-        // 校验订单是否存在
-        if (ordersDB == null) {
+        Orders orders = getOrderOrThrow(id);
+        if (!orders.getUserId().equals(BaseContext.getCurrentId())) {
             throw new OrderBusinessException(MessageConstant.ORDER_NOT_FOUND);
         }
 
-        //订单状态 1待付款 2待接单 3已接单 4派送中 5已完成 6已取消
-        if (ordersDB.getStatus() > 2) {
-            throw new OrderBusinessException(MessageConstant.ORDER_STATUS_ERROR);
-        }
+        transitionOrder(orders, OrderStatus.CANCELLED);
 
-        Orders orders = new Orders();
-        orders.setId(ordersDB.getId());
-
-   /*     // 订单处于待接单状态下取消，需要进行退款
-        if (ordersDB.getStatus().equals(Orders.TO_BE_CONFIRMED)) {
-            //调用微信支付退款接口
-            weChatPayUtil.refund(
-                    ordersDB.getNumber(), //商户订单号
-                    ordersDB.getNumber(), //商户退款单号
-                    new BigDecimal(0.01),//退款金额，单位 元
-                    new BigDecimal(0.01));//原订单金额
-
-            //支付状态修改为 退款
-            orders.setPayStatus(Orders.REFUND);
-        }
-*/
-        // 回补库存和库存流水
+        // 只有状态条件更新成功后才回补，避免并发重复取消导致重复回补。
         stockService.restoreStockByOrderId(id);
 
-        // 更新订单状态、取消原因、取消时间
-        orders.setStatus(Orders.CANCELLED);
-        orders.setCancelReason("用户取消");
-        orders.setCancelTime(LocalDateTime.now());
-        orderMapper.update(orders);
+        Orders update = Orders.builder()
+                .id(id)
+                .cancelReason("用户取消")
+                .cancelTime(LocalDateTime.now())
+                .build();
+        orderMapper.update(update);
     }
 
     /**
@@ -492,12 +487,8 @@ public class OrderServiceImpl implements OrderService {
      * @param ordersConfirmDTO
      */
     public void confirm(OrdersConfirmDTO ordersConfirmDTO) {
-        Orders orders = Orders.builder()
-                .id(ordersConfirmDTO.getId())
-                .status(Orders.CONFIRMED)
-                .build();
-
-        orderMapper.update(orders);
+        // 兼容旧管理端入口：确认接单统一转为模拟发货，不能绕过物流记录。
+        logisticsService.ship(ordersConfirmDTO.getId());
     }
 
     /**
@@ -507,11 +498,8 @@ public class OrderServiceImpl implements OrderService {
      */
     @Transactional
     public void rejection(OrdersRejectionDTO ordersRejectionDTO) throws Exception {
-        // 根据id查询订单
-        Orders ordersDB = orderMapper.getById(ordersRejectionDTO.getId());
-
-        // 订单只有存在且状态为2（待接单）才可以拒单
-        if (ordersDB == null || !ordersDB.getStatus().equals(Orders.TO_BE_CONFIRMED)) {
+        Orders ordersDB = getOrderOrThrow(ordersRejectionDTO.getId());
+        if (!Orders.TO_BE_CONFIRMED.equals(ordersDB.getStatus())) {
             throw new OrderBusinessException(MessageConstant.ORDER_STATUS_ERROR);
         }
 
@@ -527,13 +515,14 @@ public class OrderServiceImpl implements OrderService {
             log.info("申请退款：{}", refund);
         }
 
+        transitionOrder(ordersDB, OrderStatus.CANCELLED);
+
         // 拒单进入已取消状态，需要回补已扣减库存。
         stockService.restoreStockByOrderId(ordersDB.getId());
 
         // 拒单需要退款，根据订单id更新订单状态、拒单原因、取消时间
         Orders orders = new Orders();
         orders.setId(ordersDB.getId());
-        orders.setStatus(Orders.CANCELLED);
         orders.setRejectionReason(ordersRejectionDTO.getRejectionReason());
         orders.setCancelTime(LocalDateTime.now());
 
@@ -547,14 +536,7 @@ public class OrderServiceImpl implements OrderService {
      */
     @Transactional
     public void cancel(OrdersCancelDTO ordersCancelDTO) throws Exception {
-        // 根据id查询订单
-        Orders ordersDB = orderMapper.getById(ordersCancelDTO.getId());
-        if (ordersDB == null) {
-            throw new OrderBusinessException(MessageConstant.ORDER_NOT_FOUND);
-        }
-        if (Orders.CANCELLED.equals(ordersDB.getStatus())) {
-            return;
-        }
+        Orders ordersDB = getOrderOrThrow(ordersCancelDTO.getId());
 
         //支付状态
         Integer payStatus = ordersDB.getPayStatus();
@@ -568,13 +550,14 @@ public class OrderServiceImpl implements OrderService {
             log.info("申请退款：{}", refund);
         }
 
+        transitionOrder(ordersDB, OrderStatus.CANCELLED);
+
         // 回补库存和库存流水
         stockService.restoreStockByOrderId(ordersCancelDTO.getId());
 
         // 管理端取消订单需要退款，根据订单id更新订单状态、取消原因、取消时间
         Orders orders = new Orders();
         orders.setId(ordersCancelDTO.getId());
-        orders.setStatus(Orders.CANCELLED);
         orders.setCancelReason(ordersCancelDTO.getCancelReason());
         orders.setCancelTime(LocalDateTime.now());
         orderMapper.update(orders);
@@ -587,12 +570,22 @@ public class OrderServiceImpl implements OrderService {
             return;
         }
 
+        int affectedRows = orderMapper.updateStatusByIdAndStatus(
+                id,
+                OrderStatus.CANCELLED.getCode(),
+                OrderStatus.PENDING_PAYMENT.getCode());
+        if (affectedRows == 0) {
+            return;
+        }
+
         stockService.restoreStockByOrderId(id);
 
-        orders.setStatus(Orders.CANCELLED);
-        orders.setCancelReason("订单超时，自动取消");
-        orders.setCancelTime(LocalDateTime.now());
-        orderMapper.update(orders);
+        Orders update = Orders.builder()
+                .id(id)
+                .cancelReason("订单超时，自动取消")
+                .cancelTime(LocalDateTime.now())
+                .build();
+        orderMapper.update(update);
     }
 
     /**
@@ -601,20 +594,8 @@ public class OrderServiceImpl implements OrderService {
      * @param id
      */
     public void delivery(Long id) {
-        // 根据id查询订单
-        Orders ordersDB = orderMapper.getById(id);
-
-        // 校验订单是否存在，并且状态为3
-        if (ordersDB == null || !ordersDB.getStatus().equals(Orders.CONFIRMED)) {
-            throw new OrderBusinessException(MessageConstant.ORDER_STATUS_ERROR);
-        }
-
-        Orders orders = new Orders();
-        orders.setId(ordersDB.getId());
-        // 更新订单状态,状态转为派送中
-        orders.setStatus(Orders.DELIVERY_IN_PROGRESS);
-
-        orderMapper.update(orders);
+        // 兼容旧入口，实际发货逻辑统一由物流服务完成。
+        logisticsService.ship(id);
     }
 
     /**
@@ -623,21 +604,41 @@ public class OrderServiceImpl implements OrderService {
      * @param id
      */
     public void complete(Long id) {
-        // 根据id查询订单
-        Orders ordersDB = orderMapper.getById(id);
+        Orders orders = getOrderOrThrow(id);
+        transitionOrder(orders, OrderStatus.COMPLETED);
+    }
 
-        // 校验订单是否存在，并且状态为4
-        if (ordersDB == null || !ordersDB.getStatus().equals(Orders.DELIVERY_IN_PROGRESS)) {
+    /**
+     * 用户确认收货：运输中 -> 已签收。
+     */
+    @Transactional
+    public void receive(Long id) {
+        Orders orders = getOrderOrThrow(id);
+        if (!BaseContext.getCurrentId().equals(orders.getUserId())) {
+            throw new OrderBusinessException(MessageConstant.ORDER_NOT_FOUND);
+        }
+        transitionOrder(orders, OrderStatus.SIGNED);
+    }
+
+    private Orders getOrderOrThrow(Long id) {
+        Orders orders = orderMapper.getById(id);
+        if (orders == null) {
+            throw new OrderBusinessException(MessageConstant.ORDER_NOT_FOUND);
+        }
+        return orders;
+    }
+
+    private void transitionOrder(Orders orders, OrderStatus targetStatus) {
+        Integer expectedStatus = orders.getStatus();
+        orderStateMachine.transition(orders, targetStatus);
+
+        int affectedRows = orderMapper.updateStatusByIdAndStatus(
+                orders.getId(),
+                targetStatus.getCode(),
+                expectedStatus);
+        if (affectedRows == 0) {
             throw new OrderBusinessException(MessageConstant.ORDER_STATUS_ERROR);
         }
-
-        Orders orders = new Orders();
-        orders.setId(ordersDB.getId());
-        // 更新订单状态,状态转为完成
-        orders.setStatus(Orders.COMPLETED);
-        orders.setDeliveryTime(LocalDateTime.now());
-
-        orderMapper.update(orders);
     }
 
     /**

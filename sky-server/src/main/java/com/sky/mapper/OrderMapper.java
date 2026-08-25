@@ -4,6 +4,7 @@ import com.github.pagehelper.Page;
 import com.sky.dto.OrdersPageQueryDTO;
 import com.sky.entity.Orders;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
@@ -56,8 +57,21 @@ public interface OrderMapper {
      * @param orderStatus
      * @param orderPaidStatus
      */
-    @Update("update orders set status = #{orderStatus},pay_status = #{orderPaidStatus} ,checkout_time = #{check_out_time} where id = #{id}")
-    void updateStatus(Integer orderStatus, Integer orderPaidStatus, LocalDateTime check_out_time, Long id);
+    @Update("update orders set status = #{orderStatus},pay_status = #{orderPaidStatus},checkout_time = #{checkoutTime} " +
+            "where id = #{id} and status = #{expectedStatus}")
+    int updateStatus(@Param("orderStatus") Integer orderStatus,
+                     @Param("orderPaidStatus") Integer orderPaidStatus,
+                     @Param("checkoutTime") LocalDateTime checkoutTime,
+                     @Param("id") Long id,
+                     @Param("expectedStatus") Integer expectedStatus);
+
+    /**
+     * 带原状态条件的订单状态迁移，防止并发重复操作。
+     */
+    @Update("update orders set status = #{targetStatus} where id = #{id} and status = #{expectedStatus}")
+    int updateStatusByIdAndStatus(@Param("id") Long id,
+                                  @Param("targetStatus") Integer targetStatus,
+                                  @Param("expectedStatus") Integer expectedStatus);
 
     /**
      * 根据订单状态和下单时间查询订单
