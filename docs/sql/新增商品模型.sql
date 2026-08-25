@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS `user_coupon` (
 CREATE TABLE IF NOT EXISTS `stock_log` (
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键',
   `sku_id` bigint NOT NULL COMMENT 'SKU id',
-  `business_type` int NOT NULL COMMENT '1预扣 2扣减 3回补',
+  `business_type` int NOT NULL COMMENT '1初始化 2扣减 3回补',
   `biz_id` bigint DEFAULT NULL COMMENT '业务id',
   `change_count` int NOT NULL COMMENT '变动数量',
   `before_stock` int DEFAULT NULL COMMENT '变更前库存',

@@ -20,6 +20,9 @@ public interface ProductSkuMapper {
     @Select("select * from product_sku where product_id = #{productId} order by sort asc, id asc")
     List<ProductSku> listByProductId(Long productId);
 
+    @Select("select * from product_sku where status = 1")
+    List<ProductSku> listOnSale();
+
     @Delete("delete from product_sku where product_id = #{productId}")
     void deleteByProductId(Long productId);
 

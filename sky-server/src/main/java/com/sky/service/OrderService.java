@@ -92,6 +92,13 @@ public interface OrderService {
     void cancel(OrdersCancelDTO ordersCancelDTO) throws Exception;
 
     /**
+     * 超时取消订单并回补库存
+     *
+     * @param id 订单id
+     */
+    void cancelTimeoutOrder(Long id);
+
+    /**
      * 派送订单
      *
      * @param id

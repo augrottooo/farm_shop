@@ -93,9 +93,12 @@ public class OrderServiceImpl implements OrderService {
         List<OrderDetail> orderDetailList = new ArrayList<>();
         BigDecimal totalAmount = BigDecimal.ZERO;
         // 先按服务端 SKU 价格校验并计算总价，不能信任客户端传入的金额。
+        List<ShoppingCart> redisReservedCartList = new ArrayList<>();
+        boolean redisAvailable = true;
 
         for (ShoppingCart cart : shoppingCartList) {
             if (cart.getSkuId() == null || cart.getProductId() == null) {
+                restoreRedisReservations(redisReservedCartList);
                 throw new ProductBusinessException("购物车商品缺少SKU信息");
             }
 
@@ -106,6 +109,21 @@ public class OrderServiceImpl implements OrderService {
                     || !StatusConstant.ENABLE.equals(product.getStatus())
                     || !StatusConstant.ENABLE.equals(sku.getStatus())) {
                 throw new ProductBusinessException(MessageConstant.PRODUCT_NOT_FOUND);
+            }
+
+            if (redisAvailable) {
+                try {
+                    boolean reserved = stockService.reserveStock(cart.getSkuId(), cart.getNumber());
+                    if (reserved) {
+                        redisReservedCartList.add(cart);
+                    } else {
+                        redisAvailable = false;
+                        restoreRedisReservations(redisReservedCartList);
+                    }
+                } catch (ProductBusinessException ex) {
+                    restoreRedisReservations(redisReservedCartList);
+                    throw ex;
+                }
             }
 
             OrderDetail orderDetail = new OrderDetail();
@@ -131,19 +149,31 @@ public class OrderServiceImpl implements OrderService {
         orders.setConsignee(addressBook.getConsignee());
         orders.setUserId(userId);
         orders.setAmount(totalAmount);
-        orderMapper.insert(orders);
+        try {
+            orderMapper.insert(orders);
 
-        orderDetailList.forEach(orderDetail -> orderDetail.setOrderId(orders.getId()));
+            orderDetailList.forEach(orderDetail -> orderDetail.setOrderId(orders.getId()));
 
-        // 订单头先落库拿到 orderId；库存扣减和后续写入仍在本方法事务内。
-        for (ShoppingCart cart : shoppingCartList) {
-            stockService.deductStock(cart.getSkuId(), cart.getNumber(), orders.getId());
+            // 订单头先落库拿到 orderId；库存扣减和后续写入仍在本方法事务内。
+            for (ShoppingCart cart : shoppingCartList) {
+                stockService.deductStock(cart.getSkuId(), cart.getNumber(), orders.getId());
+            }
+
+            // Redis 预扣成功才会走到这里；如果前面 Redis 降级失败，直接走 DB 扣减，不再保留 Redis 预扣痕迹。
+            if (!redisAvailable) {
+                log.info("Redis 库存预扣降级为数据库扣减，订单号: {}", orders.getNumber());
+            }
+
+            orderDetailMapper.insertBatch(orderDetailList);
+
+            //4. 清空当前用户的购物车数据
+            shoppingCartMapper.deleteByUserId(userId);
+        } catch (Exception ex) {
+            if (redisAvailable) {
+                restoreRedisReservations(redisReservedCartList);
+            }
+            throw ex;
         }
-
-        orderDetailMapper.insertBatch(orderDetailList);
-
-        //4. 清空当前用户的购物车数据
-        shoppingCartMapper.deleteByUserId(userId);
 
         //5. 封装VO返回结果
         OrderSubmitVO orderSubmitVO = OrderSubmitVO.builder()
@@ -154,6 +184,15 @@ public class OrderServiceImpl implements OrderService {
                 .build();
 
         return orderSubmitVO;
+    }
+
+    private void restoreRedisReservations(List<ShoppingCart> reservedCartList) {
+        if (reservedCartList == null || reservedCartList.isEmpty()) {
+            return;
+        }
+        reservedCartList.forEach(item ->
+                stockService.restoreReservedStock(item.getSkuId(), item.getNumber()));
+        reservedCartList.clear();
     }
 
     /**
@@ -302,6 +341,7 @@ public class OrderServiceImpl implements OrderService {
      *
      * @param id
      */
+    @Transactional
     public void userCancelById(Long id) throws Exception {
         // 根据id查询订单
         Orders ordersDB = orderMapper.getById(id);
@@ -332,6 +372,9 @@ public class OrderServiceImpl implements OrderService {
             orders.setPayStatus(Orders.REFUND);
         }
 */
+        // 回补库存和库存流水
+        stockService.restoreStockByOrderId(id);
+
         // 更新订单状态、取消原因、取消时间
         orders.setStatus(Orders.CANCELLED);
         orders.setCancelReason("用户取消");
@@ -462,6 +505,7 @@ public class OrderServiceImpl implements OrderService {
      *
      * @param ordersRejectionDTO
      */
+    @Transactional
     public void rejection(OrdersRejectionDTO ordersRejectionDTO) throws Exception {
         // 根据id查询订单
         Orders ordersDB = orderMapper.getById(ordersRejectionDTO.getId());
@@ -483,6 +527,9 @@ public class OrderServiceImpl implements OrderService {
             log.info("申请退款：{}", refund);
         }
 
+        // 拒单进入已取消状态，需要回补已扣减库存。
+        stockService.restoreStockByOrderId(ordersDB.getId());
+
         // 拒单需要退款，根据订单id更新订单状态、拒单原因、取消时间
         Orders orders = new Orders();
         orders.setId(ordersDB.getId());
@@ -498,9 +545,16 @@ public class OrderServiceImpl implements OrderService {
      *
      * @param ordersCancelDTO
      */
+    @Transactional
     public void cancel(OrdersCancelDTO ordersCancelDTO) throws Exception {
         // 根据id查询订单
         Orders ordersDB = orderMapper.getById(ordersCancelDTO.getId());
+        if (ordersDB == null) {
+            throw new OrderBusinessException(MessageConstant.ORDER_NOT_FOUND);
+        }
+        if (Orders.CANCELLED.equals(ordersDB.getStatus())) {
+            return;
+        }
 
         //支付状态
         Integer payStatus = ordersDB.getPayStatus();
@@ -514,11 +568,29 @@ public class OrderServiceImpl implements OrderService {
             log.info("申请退款：{}", refund);
         }
 
+        // 回补库存和库存流水
+        stockService.restoreStockByOrderId(ordersCancelDTO.getId());
+
         // 管理端取消订单需要退款，根据订单id更新订单状态、取消原因、取消时间
         Orders orders = new Orders();
         orders.setId(ordersCancelDTO.getId());
         orders.setStatus(Orders.CANCELLED);
         orders.setCancelReason(ordersCancelDTO.getCancelReason());
+        orders.setCancelTime(LocalDateTime.now());
+        orderMapper.update(orders);
+    }
+
+    @Transactional
+    public void cancelTimeoutOrder(Long id) {
+        Orders orders = orderMapper.getById(id);
+        if (orders == null || !Orders.PENDING_PAYMENT.equals(orders.getStatus())) {
+            return;
+        }
+
+        stockService.restoreStockByOrderId(id);
+
+        orders.setStatus(Orders.CANCELLED);
+        orders.setCancelReason("订单超时，自动取消");
         orders.setCancelTime(LocalDateTime.now());
         orderMapper.update(orders);
     }

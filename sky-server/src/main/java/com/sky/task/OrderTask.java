@@ -2,6 +2,7 @@ package com.sky.task;
 
 import com.sky.entity.Orders;
 import com.sky.mapper.OrderMapper;
+import com.sky.service.OrderService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -15,6 +16,8 @@ import java.util.List;
 public class OrderTask {
     @Autowired
     private OrderMapper orderMapper;
+    @Autowired
+    private OrderService orderService;
     /**
      * 处理超时订单的方法
      */
@@ -30,10 +33,11 @@ public class OrderTask {
         //循环更新订单状态
         if(ordersList != null && ordersList.size() > 0) {
             for (Orders orders : ordersList) {
-                orders.setStatus(Orders.CANCELLED);
-                orders.setCancelReason("订单超时，自动取消");
-                orders.setCancelTime(LocalDateTime.now());
-                orderMapper.update(orders);
+                try {
+                    orderService.cancelTimeoutOrder(orders.getId());
+                } catch (Exception ex) {
+                    log.error("超时订单回补失败，orderId={}", orders.getId(), ex);
+                }
             }
         }
     }
