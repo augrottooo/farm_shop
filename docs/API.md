@@ -50,6 +50,18 @@
 
 仅返回商品主表信息；选择具体规格时继续调用 SKU 查询接口。
 
+缓存策略：
+
+- 缓存 key：`cache:product:list:category:{categoryId}`
+- `categoryId` 为空时使用 `cache:product:list:category:all`
+- 读链路使用 Cache Aside：先查 Redis，未命中再查 MySQL，回填 Redis
+- TTL：`1800` 秒 + `0~600` 秒随机扰动
+- 空值缓存：空列表 `120` 秒 + `0~30` 秒随机扰动
+- 防击穿：互斥锁 `lock:product:list:category:{categoryId}`，TTL `10` 秒
+- 防穿透：查不到数据时缓存空列表
+- 防雪崩：所有 TTL 加随机值
+- 管理端商品新增、修改、上下架成功后，事务提交再删除对应分类缓存和 `all` 缓存
+
 ### 3. 查询商品 SKU
 
 | 方法 | 路径 | 参数 | 返回 |

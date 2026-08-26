@@ -92,6 +92,16 @@ sky-take-out
 
 Redis Lua 将“读取库存、判断库存、扣减库存”放在同一个 Redis 原子脚本中，避免多个请求同时读取到同一份库存。Redis 负责高并发入口的快速拦截，MySQL 条件更新负责最终落库校验。
 
+### 商品列表缓存
+
+用户端 `GET /user/product/list` 已接入 Redis 缓存，缓存 key 为 `cache:product:list:category:{categoryId}`，当 `categoryId` 为空时使用 `cache:product:list:category:all`。
+
+- 读链路采用 Cache Aside：先查 Redis，未命中再查 MySQL，回填缓存。
+- 防穿透：查不到数据时缓存空列表，短 TTL。
+- 防击穿：热点 key 回源时使用互斥锁，避免多个请求同时打库。
+- 防雪崩：TTL 加随机扰动，避免批量同时失效。
+- 管理端商品新增、修改、上下架后，会在事务提交后删除对应分类缓存和 `all` 缓存。
+
 ### MySQL 条件更新兜底
 
 库存扣减不是先查再改，而是直接执行：
