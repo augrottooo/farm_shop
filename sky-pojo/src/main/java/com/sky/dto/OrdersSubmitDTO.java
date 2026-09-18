@@ -11,6 +11,8 @@ import java.time.LocalDateTime;
 public class OrdersSubmitDTO implements Serializable {
     //地址簿id
     private Long addressBookId;
+    //使用的用户券ID，可空
+    private Long couponId;
     //付款方式
     private int payMethod;
     //备注

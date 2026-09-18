@@ -30,6 +30,15 @@ public class MessageConstant {
     public static final String STOCK_NOT_ENOUGH = "库存不足";
     public static final String STOCK_VALUE_INVALID = "库存数量不能小于0";
     public static final String COUPON_NOT_FOUND = "优惠券不存在";
+    public static final String COUPON_NOT_AVAILABLE = "优惠券当前不可领取";
+    public static final String COUPON_SOLD_OUT = "优惠券已领完";
+    public static final String COUPON_ALREADY_RECEIVED = "该优惠券已领取";
+    public static final String COUPON_STATUS_INVALID = "优惠券状态参数错误";
+    public static final String COUPON_NOT_BELONG_TO_USER = "优惠券不属于当前用户";
+    public static final String COUPON_NOT_MEET_THRESHOLD = "订单金额未达到优惠券使用门槛";
+    public static final String COUPON_LOCK_FAILED = "优惠券锁定失败";
+    public static final String COUPON_USE_FAILED = "优惠券使用失败";
+    public static final String COUPON_DELETE_NOT_ALLOWED = "已有用户领取该优惠券，请先禁用后再保留";
     public static final String REFUND_FAILED = "退款失败";
 
 }

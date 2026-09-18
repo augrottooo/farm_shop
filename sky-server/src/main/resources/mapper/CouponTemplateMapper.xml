@@ -17,7 +17,6 @@
             <if test="discountAmount != null">discount_amount = #{discountAmount},</if>
             <if test="discountRate != null">discount_rate = #{discountRate},</if>
             <if test="totalCount != null">total_count = #{totalCount},</if>
-            <if test="issueCount != null">issue_count = #{issueCount},</if>
             <if test="receiveLimit != null">receive_limit = #{receiveLimit},</if>
             <if test="validDays != null">valid_days = #{validDays},</if>
             <if test="startTime != null">start_time = #{startTime},</if>
@@ -33,6 +32,8 @@
         <where>
             <if test="couponName != null and couponName != ''">and coupon_name like concat('%', #{couponName}, '%')</if>
             <if test="status != null">and status = #{status}</if>
+            <if test="startTime != null">and end_time &gt;= #{startTime}</if>
+            <if test="endTime != null">and start_time &lt;= #{endTime}</if>
         </where>
         order by create_time desc
     </select>

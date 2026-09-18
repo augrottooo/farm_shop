@@ -4,9 +4,9 @@
 <mapper namespace="com.sky.mapper.UserCouponMapper">
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         insert into user_coupon
-        (user_id, coupon_template_id, coupon_code, coupon_status, order_id, used_time, expire_time, create_time, update_time)
+        (user_id, coupon_template_id, coupon_code, coupon_status, order_id, receive_time, used_time, expire_time, create_time, update_time)
         values
-        (#{userId}, #{couponTemplateId}, #{couponCode}, #{couponStatus}, #{orderId}, #{usedTime}, #{expireTime}, #{createTime}, #{updateTime})
+        (#{userId}, #{couponTemplateId}, #{couponCode}, #{couponStatus}, #{orderId}, #{receiveTime}, #{usedTime}, #{expireTime}, #{createTime}, #{updateTime})
     </insert>
     <update id="update" parameterType="com.sky.entity.UserCoupon">
         update user_coupon
@@ -19,4 +19,32 @@
         </set>
         where id = #{id}
     </update>
+
+    <select id="listByUserIdAndStatus" resultType="com.sky.vo.UserCouponVO">
+        select
+            uc.id,
+            uc.user_id,
+            uc.coupon_template_id,
+            uc.coupon_code,
+            uc.coupon_status,
+            uc.order_id,
+            uc.receive_time,
+            uc.used_time,
+            uc.expire_time,
+            uc.create_time,
+            uc.update_time,
+            ct.coupon_name,
+            ct.coupon_type,
+            ct.threshold_amount,
+            ct.discount_amount,
+            ct.discount_rate,
+            ct.end_time
+        from user_coupon uc
+        left join coupon_template ct on uc.coupon_template_id = ct.id
+        where uc.user_id = #{userId}
+        <if test="couponStatus != null">
+            and uc.coupon_status = #{couponStatus}
+        </if>
+        order by uc.id desc
+    </select>
 </mapper>

@@ -35,6 +35,7 @@ public class CouponTemplate implements Serializable {
 
     private Integer totalCount;
 
+    // 已领取数，复用原 issue_count 字段
     private Integer issueCount;
 
     private Integer receiveLimit;

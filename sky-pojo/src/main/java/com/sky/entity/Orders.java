@@ -53,6 +53,9 @@ public class Orders implements Serializable {
     //地址id
     private Long addressBookId;
 
+    //使用的用户券ID
+    private Long couponId;
+
     //下单时间
     private LocalDateTime orderTime;
 
@@ -67,6 +70,12 @@ public class Orders implements Serializable {
 
     //实收金额
     private BigDecimal amount;
+
+    //原始金额
+    private BigDecimal originalAmount;
+
+    //优惠金额
+    private BigDecimal discountAmount;
 
     //备注
     private String remark;

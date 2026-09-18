@@ -19,6 +19,11 @@ public class UserCoupon implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
+    public static final Integer UNUSED = 1;
+    public static final Integer LOCKED = 2;
+    public static final Integer USED = 3;
+    public static final Integer EXPIRED = 4;
+
     private Long id;
 
     private Long userId;
@@ -27,10 +32,12 @@ public class UserCoupon implements Serializable {
 
     private String couponCode;
 
-    // 0未用 1已用 2已过期 3冻结
+    // 1未使用 2已锁定 3已使用 4已过期
     private Integer couponStatus;
 
     private Long orderId;
+
+    private LocalDateTime receiveTime;
 
     private LocalDateTime usedTime;
 

@@ -34,6 +34,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -59,6 +60,10 @@ public class OrderServiceImpl implements OrderService {
     private ProductMapper productMapper;
     @Autowired
     private ProductSkuMapper productSkuMapper;
+    @Autowired
+    private CouponTemplateMapper couponTemplateMapper;
+    @Autowired
+    private UserCouponMapper userCouponMapper;
     @Autowired
     private StockService stockService;
     @Autowired
@@ -103,46 +108,56 @@ public class OrderServiceImpl implements OrderService {
         List<ShoppingCart> redisReservedCartList = new ArrayList<>();
         boolean redisAvailable = true;
 
-        for (ShoppingCart cart : shoppingCartList) {
-            if (cart.getSkuId() == null || cart.getProductId() == null) {
-                restoreRedisReservations(redisReservedCartList);
-                throw new ProductBusinessException("购物车商品缺少SKU信息");
-            }
-
-            ProductSku sku = productSkuMapper.getById(cart.getSkuId());
-            Product product = productMapper.getById(cart.getProductId());
-            if (sku == null || product == null
-                    || !product.getId().equals(sku.getProductId())
-                    || !StatusConstant.ENABLE.equals(product.getStatus())
-                    || !StatusConstant.ENABLE.equals(sku.getStatus())) {
-                throw new ProductBusinessException(MessageConstant.PRODUCT_NOT_FOUND);
-            }
-
-            if (redisAvailable) {
-                try {
-                    boolean reserved = stockService.reserveStock(cart.getSkuId(), cart.getNumber());
-                    if (reserved) {
-                        redisReservedCartList.add(cart);
-                    } else {
-                        redisAvailable = false;
-                        restoreRedisReservations(redisReservedCartList);
-                    }
-                } catch (ProductBusinessException ex) {
-                    restoreRedisReservations(redisReservedCartList);
-                    throw ex;
+        CouponPricing couponPricing;
+        try {
+            for (ShoppingCart cart : shoppingCartList) {
+                if (cart.getSkuId() == null || cart.getProductId() == null) {
+                    throw new ProductBusinessException("购物车商品缺少SKU信息");
                 }
+
+                ProductSku sku = productSkuMapper.getById(cart.getSkuId());
+                Product product = productMapper.getById(cart.getProductId());
+                if (sku == null || product == null
+                        || !product.getId().equals(sku.getProductId())
+                        || !StatusConstant.ENABLE.equals(product.getStatus())
+                        || !StatusConstant.ENABLE.equals(sku.getStatus())) {
+                    throw new ProductBusinessException(MessageConstant.PRODUCT_NOT_FOUND);
+                }
+
+                if (redisAvailable) {
+                    try {
+                        boolean reserved = stockService.reserveStock(cart.getSkuId(), cart.getNumber());
+                        if (reserved) {
+                            redisReservedCartList.add(cart);
+                        } else {
+                            redisAvailable = false;
+                            restoreRedisReservations(redisReservedCartList);
+                        }
+                    } catch (ProductBusinessException ex) {
+                        restoreRedisReservations(redisReservedCartList);
+                        throw ex;
+                    }
+                }
+
+                OrderDetail orderDetail = new OrderDetail();
+                //orderDetail.setOrderId(orders.getId());
+                orderDetail.setProductId(product.getId());
+                orderDetail.setSkuId(sku.getId());
+                orderDetail.setName(product.getName() + "-" + sku.getSkuName());
+                orderDetail.setImage(product.getImage());
+                orderDetail.setNumber(cart.getNumber());
+                orderDetail.setAmount(sku.getPrice().multiply(BigDecimal.valueOf(cart.getNumber())));
+                totalAmount = totalAmount.add(sku.getPrice().multiply(BigDecimal.valueOf(cart.getNumber())));
+                orderDetailList.add(orderDetail);
             }
 
-            OrderDetail orderDetail = new OrderDetail();
-            //orderDetail.setOrderId(orders.getId());
-            orderDetail.setProductId(product.getId());
-            orderDetail.setSkuId(sku.getId());
-            orderDetail.setName(product.getName() + "-" + sku.getSkuName());
-            orderDetail.setImage(product.getImage());
-            orderDetail.setNumber(cart.getNumber());
-            orderDetail.setAmount(sku.getPrice().multiply(BigDecimal.valueOf(cart.getNumber())));
-            totalAmount = totalAmount.add(sku.getPrice().multiply(BigDecimal.valueOf(cart.getNumber())));
-            orderDetailList.add(orderDetail);
+            couponPricing = calculateCouponPricing(
+                    ordersSubmitDTO.getCouponId(),
+                    userId,
+                    totalAmount);
+        } catch (RuntimeException ex) {
+            restoreRedisReservations(redisReservedCartList);
+            throw ex;
         }
 
         //2. 向订单表插入1条数据
@@ -155,11 +170,24 @@ public class OrderServiceImpl implements OrderService {
         orders.setPhone(addressBook.getPhone());
         orders.setConsignee(addressBook.getConsignee());
         orders.setUserId(userId);
-        orders.setAmount(totalAmount);
+        orders.setCouponId(couponPricing.couponId);
+        orders.setOriginalAmount(totalAmount);
+        orders.setDiscountAmount(couponPricing.discountAmount);
+        orders.setAmount(couponPricing.payableAmount);
         try {
             orderMapper.insert(orders);
 
             orderDetailList.forEach(orderDetail -> orderDetail.setOrderId(orders.getId()));
+
+            if (couponPricing.couponId != null) {
+                int lockedRows = userCouponMapper.lockById(
+                        couponPricing.couponId,
+                        userId,
+                        orders.getId());
+                if (lockedRows == 0) {
+                    throw new ProductBusinessException(MessageConstant.COUPON_LOCK_FAILED);
+                }
+            }
 
             // 订单头先落库拿到 orderId；库存扣减和后续写入仍在本方法事务内。
             for (ShoppingCart cart : shoppingCartList) {
@@ -202,12 +230,109 @@ public class OrderServiceImpl implements OrderService {
         reservedCartList.clear();
     }
 
+    private CouponPricing calculateCouponPricing(Long couponId,
+                                                 Long userId,
+                                                 BigDecimal originalAmount) {
+        if (couponId == null) {
+            return new CouponPricing(null, BigDecimal.ZERO, originalAmount);
+        }
+
+        UserCoupon userCoupon = userCouponMapper.getById(couponId);
+        if (userCoupon == null) {
+            throw new ProductBusinessException(MessageConstant.COUPON_NOT_FOUND);
+        }
+        if (!userId.equals(userCoupon.getUserId())) {
+            throw new ProductBusinessException(MessageConstant.COUPON_NOT_BELONG_TO_USER);
+        }
+        if (!UserCoupon.UNUSED.equals(userCoupon.getCouponStatus())) {
+            throw new ProductBusinessException(MessageConstant.COUPON_LOCK_FAILED);
+        }
+
+        CouponTemplate template = couponTemplateMapper.getById(userCoupon.getCouponTemplateId());
+        if (template == null) {
+            throw new ProductBusinessException(MessageConstant.COUPON_NOT_FOUND);
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        if (!StatusConstant.ENABLE.equals(template.getStatus())
+                || template.getStartTime() == null
+                || template.getEndTime() == null
+                || now.isBefore(template.getStartTime())
+                || now.isAfter(template.getEndTime())
+                || (userCoupon.getExpireTime() != null && now.isAfter(userCoupon.getExpireTime()))) {
+            throw new ProductBusinessException(MessageConstant.COUPON_NOT_AVAILABLE);
+        }
+
+        BigDecimal discountAmount;
+        if (Integer.valueOf(1).equals(template.getCouponType())) {
+            if (template.getThresholdAmount() == null
+                    || originalAmount.compareTo(template.getThresholdAmount()) < 0) {
+                throw new ProductBusinessException(MessageConstant.COUPON_NOT_MEET_THRESHOLD);
+            }
+            discountAmount = template.getDiscountAmount();
+        } else if (Integer.valueOf(2).equals(template.getCouponType())) {
+            if (template.getDiscountRate() == null) {
+                throw new ProductBusinessException(MessageConstant.COUPON_NOT_AVAILABLE);
+            }
+            discountAmount = originalAmount
+                    .multiply(BigDecimal.ONE.subtract(template.getDiscountRate()))
+                    .setScale(2, RoundingMode.HALF_UP);
+        } else if (Integer.valueOf(3).equals(template.getCouponType())) {
+            discountAmount = template.getDiscountAmount();
+        } else {
+            throw new ProductBusinessException(MessageConstant.COUPON_NOT_AVAILABLE);
+        }
+
+        if (discountAmount == null || discountAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ProductBusinessException(MessageConstant.COUPON_NOT_AVAILABLE);
+        }
+        if (discountAmount.compareTo(originalAmount) > 0) {
+            discountAmount = originalAmount;
+        }
+
+        BigDecimal payableAmount = originalAmount
+                .subtract(discountAmount)
+                .setScale(2, RoundingMode.HALF_UP);
+        return new CouponPricing(couponId, discountAmount, payableAmount);
+    }
+
+    private static class CouponPricing {
+
+        private final Long couponId;
+        private final BigDecimal discountAmount;
+        private final BigDecimal payableAmount;
+
+        private CouponPricing(Long couponId,
+                              BigDecimal discountAmount,
+                              BigDecimal payableAmount) {
+            this.couponId = couponId;
+            this.discountAmount = discountAmount;
+            this.payableAmount = payableAmount;
+        }
+    }
+
+    private void useCouponAfterPayment(Orders orders) {
+        if (orders.getCouponId() == null) {
+            return;
+        }
+
+        int affectedRows = userCouponMapper.useByOrderId(orders.getId());
+        if (affectedRows == 0) {
+            throw new ProductBusinessException(MessageConstant.COUPON_USE_FAILED);
+        }
+    }
+
+    private void unlockCouponByOrderId(Long orderId) {
+        userCouponMapper.unlockByOrderId(orderId);
+    }
+
     /**
      * 订单支付
      *
      * @param ordersPaymentDTO
      * @return
      */
+    @Transactional
     public OrderPaymentVO payment(OrdersPaymentDTO ordersPaymentDTO) throws Exception {
         // 当前登录用户id
         Long userId = BaseContext.getCurrentId();
@@ -240,20 +365,21 @@ public class OrderServiceImpl implements OrderService {
         vo.setPackageStr(jsonObject.getString("package"));
 
         //为替代微信支付成功后的数据库订单状态更新，多定义一个方法进行修改
-        Integer OrderPaidStatus = Orders.PAID; //支付状态，已支付
-        Integer OrderStatus = Orders.TO_BE_CONFIRMED;  //订单状态，待接单
+        Integer orderPaidStatus = Orders.PAID; //支付状态，已支付
+        Integer orderStatus = OrderStatus.WAITING_SHIP.getCode();  //订单状态，待发货
 
         //发现没有将支付时间 check_out属性赋值，所以在这里更新
         LocalDateTime check_out_time = LocalDateTime.now();
         int affectedRows = orderMapper.updateStatus(
-                OrderStatus,
-                OrderPaidStatus,
+                orderStatus,
+                orderPaidStatus,
                 check_out_time,
                 orderId,
                 Orders.PENDING_PAYMENT);
         if (affectedRows == 0) {
             throw new OrderBusinessException(MessageConstant.ORDER_STATUS_ERROR);
         }
+        useCouponAfterPayment(orders);
 
         // =====================【新增WebSocket推送 放在方法末尾】=====================
         Map map = new HashMap();
@@ -274,10 +400,14 @@ public class OrderServiceImpl implements OrderService {
      *
      * @param outTradeNo
      */
+    @Transactional
     public void paySuccess(String outTradeNo) {
 
         // 根据订单号查询订单
         Orders ordersDB = orderMapper.getByNumber(outTradeNo);
+        if (ordersDB == null) {
+            throw new OrderBusinessException(MessageConstant.ORDER_NOT_FOUND);
+        }
 
         // 根据订单id更新订单的状态、支付方式、支付状态、结账时间
         int affectedRows = orderMapper.updateStatus(
@@ -289,6 +419,7 @@ public class OrderServiceImpl implements OrderService {
         if (affectedRows == 0) {
             throw new OrderBusinessException(MessageConstant.ORDER_STATUS_ERROR);
         }
+        useCouponAfterPayment(ordersDB);
 
     }
 
@@ -367,6 +498,7 @@ public class OrderServiceImpl implements OrderService {
         transitionOrder(orders, OrderStatus.CANCELLED);
 
         // 只有状态条件更新成功后才回补，避免并发重复取消导致重复回补。
+        unlockCouponByOrderId(id);
         stockService.restoreStockByOrderId(id);
 
         Orders update = Orders.builder()
@@ -518,6 +650,7 @@ public class OrderServiceImpl implements OrderService {
         transitionOrder(ordersDB, OrderStatus.CANCELLED);
 
         // 拒单进入已取消状态，需要回补已扣减库存。
+        unlockCouponByOrderId(ordersDB.getId());
         stockService.restoreStockByOrderId(ordersDB.getId());
 
         // 拒单需要退款，根据订单id更新订单状态、拒单原因、取消时间
@@ -553,6 +686,7 @@ public class OrderServiceImpl implements OrderService {
         transitionOrder(ordersDB, OrderStatus.CANCELLED);
 
         // 回补库存和库存流水
+        unlockCouponByOrderId(ordersCancelDTO.getId());
         stockService.restoreStockByOrderId(ordersCancelDTO.getId());
 
         // 管理端取消订单需要退款，根据订单id更新订单状态、取消原因、取消时间
@@ -578,6 +712,7 @@ public class OrderServiceImpl implements OrderService {
             return;
         }
 
+        unlockCouponByOrderId(id);
         stockService.restoreStockByOrderId(id);
 
         Orders update = Orders.builder()
